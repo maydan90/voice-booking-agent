@@ -1,0 +1,100 @@
+[
+  {
+    "name": "happy path: book a table for two",
+    "now": "2026-03-10T09:00:00",
+    "steps": [
+      {"tool": "check_availability", "args": {"date": "2026-03-12"}, "expect_contains": ["March 12", "9 AM"]},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_contains": ["You're booked for 2 on March 12 at 2 PM", "confirmation code"], "expect_effect": "booked"}
+    ],
+    "expect_appointments": 1
+  },
+  {
+    "name": "refusal says nothing was booked and offers alternatives",
+    "now": "2026-03-10T09:00:00",
+    "setup": {"fill_slot": {"date": "2026-03-12", "time": "14:00"}},
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_contains": ["That time is full", "I do have", "Nothing was booked yet"], "expect_effect": "nothing_changed"}
+    ],
+    "expect_appointments": 0
+  },
+  {
+    "name": "model retries the same booking: one appointment, same code",
+    "now": "2026-03-10T09:00:00",
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2}, "expect_effect": "booked"},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2}, "expect_effect": "booked", "expect_same_text_as_step": 0}
+    ],
+    "expect_appointments": 1
+  },
+  {
+    "name": "lost answer after the write applied: recovered by lookup, no second booking",
+    "now": "2026-03-10T09:00:00",
+    "flaky": {"lose_after": [0]},
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_contains": ["You're booked"], "expect_effect": "booked"}
+    ],
+    "expect_appointments": 1,
+    "expect_backend_log": ["create #0 applied, answer lost", "lookup"]
+  },
+  {
+    "name": "lost answer before the write applied: resent once with the same request id",
+    "now": "2026-03-10T09:00:00",
+    "flaky": {"lose_before": [0]},
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_contains": ["You're booked"], "expect_effect": "booked"}
+    ],
+    "expect_appointments": 1,
+    "expect_backend_log": ["create #0 lost before apply", "lookup", "create #1 ok"]
+  },
+  {
+    "name": "two lost answers: unconfirmed, handed off, never retried",
+    "now": "2026-03-10T09:00:00",
+    "flaky": {"lose_before": [0, 1]},
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_contains": ["wasn't able to confirm", "won't keep trying", "call you back"], "expect_effect": "unconfirmed"}
+    ],
+    "expect_appointments": 0
+  },
+  {
+    "name": "policy the model cannot negotiate: 11 pm, 5 people, tomorrow in an hour",
+    "now": "2026-03-10T09:00:00",
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "23:00", "party_size": 2},
+       "expect_contains": ["between 9 AM and 4 PM"], "expect_effect": "nothing_changed"},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 5},
+       "expect_contains": ["up to four people"], "expect_effect": "nothing_changed"},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-10", "time": "10:00", "party_size": 2},
+       "expect_contains": ["two hours' notice"], "expect_effect": "nothing_changed"},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 3},
+       "expect_contains": ["card on file"], "expect_effect": "nothing_changed"}
+    ],
+    "expect_appointments": 0
+  },
+  {
+    "name": "change and cancel with the confirmation code; late cancellation fee is stated",
+    "now": "2026-03-10T09:00:00",
+    "steps": [
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2}, "expect_effect": "booked"},
+      {"tool": "change_appointment", "args": {"confirmation_code": "$CODE", "date": "2026-03-13", "time": "10:00"},
+       "expect_contains": ["now on March 13 at 10 AM"], "expect_effect": "changed"},
+      {"tool": "cancel_appointment", "args": {"confirmation_code": "$CODE"},
+       "expect_contains": ["is cancelled", "no charge"], "expect_effect": "cancelled"}
+    ],
+    "expect_appointments": 0
+  },
+  {
+    "name": "someone else's code cannot be changed from this phone",
+    "now": "2026-03-10T09:00:00",
+    "setup": {"other_booking": {"date": "2026-03-12", "time": "11:00"}},
+    "steps": [
+      {"tool": "change_appointment", "args": {"confirmation_code": "$OTHER_CODE", "date": "2026-03-13", "time": "10:00"},
+       "expect_contains": ["different phone number", "Nothing was changed"], "expect_effect": "nothing_changed"}
+    ],
+    "expect_appointments": 0
+  }
+]
