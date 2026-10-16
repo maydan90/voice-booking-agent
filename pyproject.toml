@@ -1,0 +1,30 @@
+[project]
+name = "voice-booking-agent"
+version = "0.1.0"
+description = "A small LiveKit Agents voice agent for appointment booking, showing typed speakable tool outcomes, per-change request ids reused on retry, recovery of lost answers, and decisions that never reach the model."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+  "livekit-agents>=1.8,<2",
+]
+
+[project.optional-dependencies]
+# Only needed to run the agent against real speech and language providers.
+voice = [
+  "livekit-plugins-openai>=1.8,<2",
+  "livekit-plugins-deepgram>=1.8,<2",
+  "livekit-plugins-cartesia>=1.8,<2",
+  "livekit-plugins-silero>=1.8,<2",
+]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools]
+packages = ["booking", "agent", "evals"]
