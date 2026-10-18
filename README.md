@@ -13,7 +13,7 @@ The evals replay scripted tool-call sequences through the real tools, against a 
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                    # 33 tests, no keys needed
+pytest -q                    # 116 tests, no keys needed
 python -m evals.run_evals    # 9 scripted scenarios, no keys needed
 ```
 
@@ -53,6 +53,7 @@ booking/
   policy.py      the rules the model cannot negotiate
   service.py     in-memory backend: idempotent on request_id, lookup(request_id), capacity per slot
   flaky.py       wrapper that loses answers before or after the write, for tests and evals
+  spoken_dates.py "next Tuesday", "the 12th", "tomorrow at two" -> YYYY-MM-DD and HH:MM, resolved against the call's clock
 agent/
   request_ids.py per-change ids, reused on retry
   tools.py       the four function tools; recovery path; per-call state in AgentSession.userdata
@@ -70,6 +71,7 @@ tests/           service, tools and eval scenarios under pytest
 - Change and cancel are scoped to the caller's phone number (from the SIP participant on a real call). Someone else's code gets "That appointment is under a different phone number", not a lookup leak.
 - The same request id with a different payload raises in the backend rather than replaying. That is a bug in the caller, and a replay would hide it.
 - `Unconfirmed` is the only outcome whose text promises a human callback. In a real deployment that outcome also opens a ticket; here it is logged.
+- Spoken dates are resolved in code, not by the model. `booking/spoken_dates.py` turns "next Tuesday", "the 12th" and "tomorrow at two" into ISO values against the call's clock, with the conventions written down (a bare weekday is the next one, "next" means the following week, a bare "two" is 2 PM during business hours). Anything it cannot resolve returns None and the agent asks again, since a model guessing today's date is how a booking lands on the wrong day. Table-driven tests in `tests/test_spoken_dates.py`.
 - The system prompt is deliberately short. Everything the agent must not do is enforced by a tool, so the prompt only has to explain how to relay what the tools say.
 
 ## What this is not
