@@ -51,14 +51,18 @@
     "expect_backend_log": ["create #0 lost before apply", "lookup", "create #1 ok"]
   },
   {
-    "name": "two lost answers: unconfirmed, handed off, never retried",
+    "name": "two lost answers: unconfirmed, handed off once, never retried even when the model asks again",
     "now": "2026-03-10T09:00:00",
     "flaky": {"lose_before": [0, 1]},
     "steps": [
       {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
-       "expect_contains": ["wasn't able to confirm", "won't keep trying", "call you back"], "expect_effect": "unconfirmed"}
+       "expect_contains": ["wasn't able to confirm", "won't keep trying", "call you back"], "expect_effect": "unconfirmed"},
+      {"tool": "book_appointment", "args": {"name": "Dana", "date": "2026-03-12", "time": "14:00", "party_size": 2},
+       "expect_same_text_as_step": 0, "expect_effect": "unconfirmed"}
     ],
-    "expect_appointments": 0
+    "expect_appointments": 0,
+    "expect_backend_writes": 2,
+    "expect_handoffs": 1
   },
   {
     "name": "policy the model cannot negotiate: 11 pm, 5 people, tomorrow in an hour",

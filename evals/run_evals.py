@@ -84,6 +84,14 @@ async def run_scenario(scenario: dict[str, Any]) -> list[str]:
     live = [a for a in inner._appointments.values() if a.phone == CALLER and a.id not in inner._cancelled]
     if "expect_appointments" in scenario and len(live) != scenario["expect_appointments"]:
         failures.append(f"expected the caller to hold {scenario['expect_appointments']} appointments, found {len(live)}")
+    if "expect_backend_writes" in scenario:
+        writes = getattr(state.backend, "calls", None)
+        if writes != scenario["expect_backend_writes"]:
+            failures.append(f"expected {scenario['expect_backend_writes']} backend writes, saw {writes}")
+    if "expect_handoffs" in scenario:
+        opened = len(state.handoffs.open_items())
+        if opened != scenario["expect_handoffs"]:
+            failures.append(f"expected {scenario['expect_handoffs']} handoffs, found {opened}")
     if "expect_backend_log" in scenario:
         log = getattr(state.backend, "log", [])
         for needle in scenario["expect_backend_log"]:
