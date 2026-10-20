@@ -10,6 +10,9 @@ Three rules are enforced here, outside the model:
 3. A lost answer is recovered, not retried blindly: look up by request id
    first; resend once with the same id only if the write did not apply;
    otherwise return Unconfirmed. Bounded, and never a double booking.
+4. Unconfirmed opens a handoff (booking/handoffs.py), once per change. If the
+   model calls the tool again for a change already handed off, nothing is
+   written: a person owns it now, and the caller hears the same sentence.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from typing import Protocol
 
 from livekit.agents import RunContext, function_tool
 
+from booking.handoffs import HandoffQueue
 from booking.outcomes import Appointment, Outcome, Refused, Unconfirmed, spoken_date, spoken_time
 from booking.service import LostAnswer
 
@@ -45,6 +49,9 @@ class CallState:
     caller_phone: str
     request_ids: RequestIds = field(default_factory=RequestIds)
     outcomes: list[Outcome] = field(default_factory=list)  # every outcome spoken, for evals and logs
+    # One queue per call by default; a real deployment injects the shared queue
+    # that its support team works from.
+    handoffs: HandoffQueue = field(default_factory=HandoffQueue)
 
 
 def _record(state: CallState, outcome: Outcome) -> str:
@@ -64,6 +71,23 @@ def _recover(state: CallState, request_id: str, resend) -> Outcome:
         # Second lost answer. Do not loop; the backend's request id guarantees that
         # whichever attempt applied, at most one appointment exists.
         return Unconfirmed(request_id=request_id)
+
+
+def _write(state: CallState, intent: str, request_id: str, details: dict[str, object], attempt) -> Outcome:
+    """One write with recovery, and a handoff when the outcome stays unknown."""
+    if state.handoffs.for_request(request_id) is not None:
+        # Already with a person. Writing again here could race their callback.
+        log.info("handoff already open for %s; not writing again", request_id)
+        return Unconfirmed(request_id=request_id)
+    try:
+        outcome = attempt()
+    except LostAnswer:
+        outcome = _recover(state, request_id, attempt)
+    if isinstance(outcome, Unconfirmed):
+        handoff, created = state.handoffs.open(request_id, state.caller_phone, intent, details)
+        if created:
+            log.warning("handoff opened id=%s request_id=%s intent=%s", handoff.id, request_id, intent)
+    return outcome
 
 
 @function_tool
@@ -98,11 +122,8 @@ async def book_appointment(context: RunContext[CallState], name: str, date: str,
     def attempt() -> Outcome:
         return state.backend.create(request_id, name, phone, date, time, party_size)
 
-    try:
-        outcome = attempt()
-    except LostAnswer:
-        outcome = _recover(state, request_id, attempt)
-    return _record(state, outcome)
+    details = {"name": name, "date": date, "time": time, "party_size": party_size}
+    return _record(state, _write(state, "create", request_id, details, attempt))
 
 
 @function_tool
@@ -121,11 +142,8 @@ async def change_appointment(context: RunContext[CallState], confirmation_code: 
     def attempt() -> Outcome:
         return state.backend.change(request_id, confirmation_code, phone, date, time)
 
-    try:
-        outcome = attempt()
-    except LostAnswer:
-        outcome = _recover(state, request_id, attempt)
-    return _record(state, outcome)
+    details = {"confirmation_code": confirmation_code, "date": date, "time": time}
+    return _record(state, _write(state, "change", request_id, details, attempt))
 
 
 @function_tool
@@ -142,11 +160,8 @@ async def cancel_appointment(context: RunContext[CallState], confirmation_code: 
     def attempt() -> Outcome:
         return state.backend.cancel(request_id, confirmation_code, phone)
 
-    try:
-        outcome = attempt()
-    except LostAnswer:
-        outcome = _recover(state, request_id, attempt)
-    return _record(state, outcome)
+    details = {"confirmation_code": confirmation_code}
+    return _record(state, _write(state, "cancel", request_id, details, attempt))
 
 
 ALL_TOOLS = [check_availability, book_appointment, change_appointment, cancel_appointment]
