@@ -10,7 +10,7 @@ This is a small LiveKit Agents voice agent that books, moves and cancels appoint
 2. **Decisions live in code, not in the prompt.** Hours, lead time, horizon, party size, card rules and fees are in `booking/policy.py` and enforced by the tools. The prompt may describe a rule; it never enforces one. Do not add rules to `agent/prompts.py`.
 3. **Every write carries a per-change request id.** Ids come from `RequestIds.for_change(intent, **args)` and are a function of the change, not the attempt. Never generate an id per call, never reuse one for a different payload.
 4. **Unknown is a state.** A `LostAnswer` is neither success nor failure: look up by request id, resend once with the same id, then return `Unconfirmed` and open one handoff. Never loop, never treat a timeout as a failure, never write again for a change that already has a handoff.
-5. **Speech is short and ends with the effect.** Refusals end with "Nothing was booked." or "Nothing was changed." so the model stops retrying. One or two sentences, read aloud by TTS: no symbols, no lists, codes spelled letter by letter.
+5. **Speech is short and ends with the effect.** Refusals end with "Nothing was booked." or "Nothing was changed." (or "...yet." when alternatives are offered) so the model stops retrying. One or two sentences, read aloud by TTS: no symbols, no lists, codes spelled letter by letter.
 
 ## Principles
 
@@ -24,6 +24,7 @@ This is a small LiveKit Agents voice agent that books, moves and cancels appoint
 ## Behavior
 
 - **Ask when unclear.** If a request conflicts with the contract, say so and ask. Do not shoehorn.
+- **Plan before a new tool or outcome.** List the files you will touch, the new outcome codes and what the caller will hear, then wait for a go before editing.
 - **Providers stay in `agent/main.py`.** Nothing else imports a speech or model provider. Do not add dependencies without asking.
 - **Git.** Commit or push only when asked. One change per commit, imperative subject, no amending pushed commits.
 - **No employer code or data, ever.** The domain is a generic studio. Phone numbers in tests and evals are `+1555…` placeholders. Names are placeholders.
@@ -44,7 +45,7 @@ CI runs `pytest -q` and `python -m evals.run_evals` on every push and pull reque
 
 ## Build and verify
 
-1. Read the module you are touching and its test file. `tests/` mirrors `booking/` and `agent/`.
+1. Read the module you are touching and the tests that cover it: `tests/` has the service, the tools, spoken dates, handoffs and the eval runner.
 2. Write the test first when the change is a rule or an outcome.
 3. If the caller would hear something different, add or update a scenario in `evals/scenarios.json`. Scenarios assert on what the caller hears and on what the backend holds afterwards, not on internals.
 4. Run both commands. Paste the summary line of each in your final message.

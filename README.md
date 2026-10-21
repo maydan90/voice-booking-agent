@@ -13,7 +13,7 @@ The evals replay scripted tool-call sequences through the real tools, against a 
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                    # 121 tests, no keys needed
+pytest -q                    # 122 tests, no keys needed
 python -m evals.run_evals    # 9 scripted scenarios, no keys needed
 ```
 
