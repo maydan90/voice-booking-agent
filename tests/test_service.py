@@ -115,3 +115,13 @@ def test_confirmation_codes_avoid_letters_that_get_misheard():
         out = s.create(f"r{i}", "X", f"+{i}", "2026-03-12", f"{9 + i % 8:02d}:00", 1)
         if isinstance(out, Booked):
             assert not set(out.appointment.id) & set("01oil")
+
+
+def test_every_refusal_code_has_speech_and_nothing_else_does():
+    # refusal() passes a _REFUSAL_TEXT key where a RefusalCode is expected; this keeps the two in step.
+    from typing import get_args
+
+    from booking.outcomes import RefusalCode
+    from booking.service import _REFUSAL_TEXT
+
+    assert set(_REFUSAL_TEXT) == set(get_args(RefusalCode))
