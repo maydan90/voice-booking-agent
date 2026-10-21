@@ -45,7 +45,7 @@ def refusal(code: str, alternatives: list[str] | None = None) -> Refused:
         spoken = ", ".join(spoken_time(t) for t in alts[:3])
         for ending in ("Nothing was booked.", "Nothing was changed."):
             text = text.replace(ending, f"I do have {spoken}. {ending[:-1]} yet.")
-    return Refused(code=code, speakable=text, alternatives=alts)  # type: ignore[arg-type]
+    return Refused(code=code, speakable=text, alternatives=alts)  # type: ignore[arg-type]  # code is a _REFUSAL_TEXT key; a test keeps those keys equal to RefusalCode
 
 
 @dataclass
