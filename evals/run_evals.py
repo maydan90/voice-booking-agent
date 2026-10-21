@@ -45,7 +45,7 @@ def build(scenario: dict[str, Any]) -> tuple[CallState, Any, dict[str, str]]:
     if "other_booking" in setup:
         s = setup["other_booking"]
         out = inner.create("seed-other", "Someone Else", OTHER, s["date"], s["time"], 1)
-        codes["$OTHER_CODE"] = out.appointment.id  # type: ignore[union-attr]
+        codes["$OTHER_CODE"] = out.appointment.id  # type: ignore[union-attr]  # seeding an open slot always returns Booked
 
     flaky = scenario.get("flaky")
     backend: Any = (
@@ -69,7 +69,7 @@ async def run_scenario(scenario: dict[str, Any]) -> list[str]:
         said.append(text)
         # Capture the confirmation code the first booking produced, for later steps.
         if state.outcomes and state.outcomes[-1].code == "booked" and "$CODE" not in codes:
-            codes["$CODE"] = state.outcomes[-1].appointment.id  # type: ignore[union-attr]
+            codes["$CODE"] = state.outcomes[-1].appointment.id  # type: ignore[union-attr]  # guarded by code == "booked" above
 
         for needle in step.get("expect_contains", []):
             if needle not in text:
