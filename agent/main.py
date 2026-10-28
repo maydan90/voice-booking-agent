@@ -11,7 +11,11 @@ without any keys.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import secrets
 from datetime import datetime
+from pathlib import Path
 
 from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
 
@@ -19,6 +23,7 @@ from booking.service import BookingService
 
 from .prompts import INSTRUCTIONS
 from .tools import ALL_TOOLS, CallState
+from .transcript import TranscriptLog
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,13 +47,28 @@ def caller_phone_from(ctx: JobContext) -> str:
     return "+15550100"
 
 
+def transcript_for(call_id: str) -> TranscriptLog:
+    """One .jsonl per call under TRANSCRIPTS_DIR; in memory only when the variable is unset."""
+    directory = os.environ.get("TRANSCRIPTS_DIR")
+    if not directory:
+        return TranscriptLog()
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", call_id)
+    return TranscriptLog(path=Path(directory) / f"{safe}.jsonl")
+
+
 async def entrypoint(ctx: JobContext) -> None:
     # Providers are imported here so the rest of the package stays key-free.
     from livekit.plugins import cartesia, deepgram, openai, silero
 
     await ctx.connect()
     backend = BookingService(clock=datetime.now)
-    state = CallState(backend=backend, caller_phone=caller_phone_from(ctx))
+    call_id = ctx.room.name or secrets.token_hex(6)
+    state = CallState(
+        backend=backend,
+        caller_phone=caller_phone_from(ctx),
+        call_id=call_id,
+        transcript=transcript_for(call_id),
+    )
 
     session: AgentSession[CallState] = AgentSession(
         userdata=state,

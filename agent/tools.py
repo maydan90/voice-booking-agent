@@ -13,12 +13,19 @@ Three rules are enforced here, outside the model:
 4. Unconfirmed opens a handoff (booking/handoffs.py), once per change. If the
    model calls the tool again for a change already handed off, nothing is
    written: a person owns it now, and the caller hears the same sentence.
+
+Every tool call also appends one line to the call's transcript
+(agent/transcript.py): tool, request id, outcome code and effect, latency and
+the sentence returned to the model. That file is what an eval on a real call
+reads later.
 """
 
 from __future__ import annotations
 
 import logging
+import secrets
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Protocol
 
 from livekit.agents import RunContext, function_tool
@@ -28,6 +35,7 @@ from booking.outcomes import Appointment, Outcome, Refused, Unconfirmed, spoken_
 from booking.service import LostAnswer
 
 from .request_ids import RequestIds
+from .transcript import TranscriptLog
 
 log = logging.getLogger("booking-agent")
 
@@ -47,16 +55,34 @@ class CallState:
 
     backend: BookingBackend
     caller_phone: str
+    call_id: str = field(default_factory=lambda: secrets.token_hex(6))  # the room name on a real call
     request_ids: RequestIds = field(default_factory=RequestIds)
     outcomes: list[Outcome] = field(default_factory=list)  # every outcome spoken, for evals and logs
     # One queue per call by default; a real deployment injects the shared queue
     # that its support team works from.
     handoffs: HandoffQueue = field(default_factory=HandoffQueue)
+    # In memory by default; agent/main.py gives it a file when TRANSCRIPTS_DIR is set.
+    transcript: TranscriptLog = field(default_factory=TranscriptLog)
 
 
-def _record(state: CallState, outcome: Outcome) -> str:
+def _elapsed_ms(started: float) -> int:
+    return int((perf_counter() - started) * 1000)
+
+
+def _record(state: CallState, tool: str, started: float, request_id: str, outcome: Outcome) -> str:
     state.outcomes.append(outcome)
     log.info("outcome code=%s effect=%s", outcome.code, outcome.effect.value)
+    handoff = state.handoffs.for_request(request_id)
+    state.transcript.record(
+        call_id=state.call_id,
+        tool=tool,
+        request_id=request_id,
+        code=outcome.code,
+        effect=outcome.effect.value,
+        latency_ms=_elapsed_ms(started),
+        handoff_id=handoff.id if handoff is not None else None,
+        said=outcome.speakable,
+    )
     return outcome.speakable
 
 
@@ -98,11 +124,23 @@ async def check_availability(context: RunContext[CallState], date: str) -> str:
         date: The date in YYYY-MM-DD format.
     """
     state = context.userdata
+    started = perf_counter()
     slots = state.backend.availability(date)
-    if not slots:
-        return "There are no open times on that date."
-    spoken = ", ".join(spoken_time(s) for s in slots)
-    return f"On {spoken_date(date)} we have {spoken}."
+    if slots:
+        said = f"On {spoken_date(date)} we have {', '.join(spoken_time(s) for s in slots)}."
+    else:
+        said = "There are no open times on that date."
+    state.transcript.record(
+        call_id=state.call_id,
+        tool="check_availability",
+        request_id=None,
+        code=None,
+        effect=None,
+        latency_ms=_elapsed_ms(started),
+        handoff_id=None,
+        said=said,
+    )
+    return said
 
 
 @function_tool
@@ -116,6 +154,7 @@ async def book_appointment(context: RunContext[CallState], name: str, date: str,
         party_size: Number of people, 1 to 4.
     """
     state = context.userdata
+    started = perf_counter()
     phone = state.caller_phone
     request_id = state.request_ids.for_change("create", name=name, phone=phone, date=date, time=time, party_size=party_size)
 
@@ -123,7 +162,7 @@ async def book_appointment(context: RunContext[CallState], name: str, date: str,
         return state.backend.create(request_id, name, phone, date, time, party_size)
 
     details = {"name": name, "date": date, "time": time, "party_size": party_size}
-    return _record(state, _write(state, "create", request_id, details, attempt))
+    return _record(state, "book_appointment", started, request_id, _write(state, "create", request_id, details, attempt))
 
 
 @function_tool
@@ -136,6 +175,7 @@ async def change_appointment(context: RunContext[CallState], confirmation_code: 
         time: The new start time in 24-hour HH:MM format, on the hour.
     """
     state = context.userdata
+    started = perf_counter()
     phone = state.caller_phone
     request_id = state.request_ids.for_change("change", code=confirmation_code.lower(), phone=phone, date=date, time=time)
 
@@ -143,7 +183,7 @@ async def change_appointment(context: RunContext[CallState], confirmation_code: 
         return state.backend.change(request_id, confirmation_code, phone, date, time)
 
     details = {"confirmation_code": confirmation_code, "date": date, "time": time}
-    return _record(state, _write(state, "change", request_id, details, attempt))
+    return _record(state, "change_appointment", started, request_id, _write(state, "change", request_id, details, attempt))
 
 
 @function_tool
@@ -154,6 +194,7 @@ async def cancel_appointment(context: RunContext[CallState], confirmation_code: 
         confirmation_code: The five-character confirmation code the caller was given.
     """
     state = context.userdata
+    started = perf_counter()
     phone = state.caller_phone
     request_id = state.request_ids.for_change("cancel", code=confirmation_code.lower(), phone=phone)
 
@@ -161,7 +202,7 @@ async def cancel_appointment(context: RunContext[CallState], confirmation_code: 
         return state.backend.cancel(request_id, confirmation_code, phone)
 
     details = {"confirmation_code": confirmation_code}
-    return _record(state, _write(state, "cancel", request_id, details, attempt))
+    return _record(state, "cancel_appointment", started, request_id, _write(state, "cancel", request_id, details, attempt))
 
 
 ALL_TOOLS = [check_availability, book_appointment, change_appointment, cancel_appointment]
