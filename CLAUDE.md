@@ -63,6 +63,7 @@ CI runs `pytest -q` and `python -m evals.run_evals` on every push and pull reque
 | "next Tuesday at two" to ISO, against the call's clock | `booking/spoken_dates.py` |
 | The tools, recovery path, per-call state | `agent/tools.py` |
 | Per-change request ids | `agent/request_ids.py` |
+| One line per tool outcome on a real call (`TRANSCRIPTS_DIR`) | `agent/transcript.py` |
 | System prompt (short on purpose) | `agent/prompts.py` |
 | LiveKit entrypoint, the only file with providers | `agent/main.py` |
 | Scenarios and the runner | `evals/scenarios.json`, `evals/run_evals.py` |

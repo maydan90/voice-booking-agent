@@ -13,7 +13,7 @@ The evals replay scripted tool-call sequences through the real tools, against a 
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                    # 122 tests, no keys needed
+pytest -q                    # 128 tests, no keys needed
 python -m evals.run_evals    # 9 scripted scenarios, no keys needed
 ```
 
@@ -58,6 +58,7 @@ booking/
 agent/
   request_ids.py per-change ids, reused on retry
   tools.py       the four function tools; recovery path; per-call state in AgentSession.userdata
+  transcript.py  one JSON line per tool outcome (request id, code, effect, latency, the sentence said): the raw material for evals on real calls
   prompts.py     the system prompt (short; the rules live in code)
   main.py        LiveKit entrypoint; the only file that knows about STT/LLM/TTS providers
 evals/
@@ -73,6 +74,7 @@ tests/           service, tools and eval scenarios under pytest
 - The same request id with a different payload raises in the backend rather than replaying. That is a bug in the caller, and a replay would hide it.
 - `Unconfirmed` is the only outcome whose text promises a human callback, so it opens a handoff in `booking/handoffs.py` with what a person needs to act without replaying the call: the request id, the caller's number, the intent and the change's details. It is created once per change. If the model repeats the same tool call after hearing "I won't keep trying", the tool writes nothing, opens no second ticket and says the same sentence again, because an agent write racing a person's callback is how a booking gets made twice. The queue is in memory here; in a real deployment it points at the ticketing or CRM system with the same idempotency on the request id. Tests in `tests/test_handoffs.py`.
 - Spoken dates are resolved in code, not by the model. `booking/spoken_dates.py` turns "next Tuesday", "the 12th" and "tomorrow at two" into ISO values against the call's clock, with the conventions written down (a bare weekday is the next one, "next" means the following week, a bare "two" is 2 PM during business hours). Anything it cannot resolve returns None and the agent asks again, since a model guessing today's date is how a booking lands on the wrong day. Table-driven tests in `tests/test_spoken_dates.py`.
+- Every tool call on a real call is appended to a per-call `.jsonl` transcript when `TRANSCRIPTS_DIR` is set: timestamp, tool, request id, outcome code and effect, latency, the handoff id if one is open, and the sentence the model was told to say. Never the caller's number or name. A retry shows as two lines with one request id, so a transcript eval can see the model repeating itself. The replayed evals in `evals/` script the same calls without a model; this file is what the real ones leave behind.
 - The system prompt is deliberately short. Everything the agent must not do is enforced by a tool, so the prompt only has to explain how to relay what the tools say.
 
 ## What this is not
