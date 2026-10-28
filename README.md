@@ -1,5 +1,9 @@
 # voice-booking-agent
 
+[![ci](https://github.com/maydan90/voice-booking-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/maydan90/voice-booking-agent/actions/workflows/ci.yml)
+
+Status: working demo. Every push runs 128 tests and 9 replayed scenarios with no API keys; the voice pipeline itself needs provider keys and is exercised by hand.
+
 A small voice agent on [LiveKit Agents](https://github.com/livekit/agents) that books, moves and cancels appointments over the phone. It exists to show four things I think every production voice agent needs, and that are easy to get wrong:
 
 1. **Typed, speakable tool outcomes.** Tools never return an error to the model. They return an outcome with a `code`, an `effect` (booked, nothing changed, unconfirmed) and a `speakable` sentence the agent says verbatim. "That time is full. I do have 3 PM, 4 PM. Nothing was booked yet." ends the retry loop that a raw 400 starts.
