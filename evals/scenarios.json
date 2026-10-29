@@ -100,5 +100,57 @@
        "expect_contains": ["different phone number", "Nothing was changed"], "expect_effect": "nothing_changed"}
     ],
     "expect_appointments": 0
+  },
+  {
+    "name": "caller changes their mind mid-call: book, move to a full slot (refused with alternatives), move to an open one",
+    "now": "2026-03-10T09:00:00",
+    "setup": {
+      "fill_slot": {
+        "date": "2026-03-13",
+        "time": "15:00"
+      }
+    },
+    "steps": [
+      {
+        "tool": "book_appointment",
+        "args": {
+          "name": "Dana",
+          "date": "2026-03-12",
+          "time": "14:00",
+          "party_size": 2
+        },
+        "expect_contains": [
+          "You're booked for 2 on March 12 at 2 PM"
+        ],
+        "expect_effect": "booked"
+      },
+      {
+        "tool": "change_appointment",
+        "args": {
+          "confirmation_code": "$CODE",
+          "date": "2026-03-13",
+          "time": "15:00"
+        },
+        "expect_contains": [
+          "That time is full",
+          "I do have",
+          "Nothing was changed"
+        ],
+        "expect_effect": "nothing_changed"
+      },
+      {
+        "tool": "change_appointment",
+        "args": {
+          "confirmation_code": "$CODE",
+          "date": "2026-03-13",
+          "time": "16:00"
+        },
+        "expect_contains": [
+          "Your appointment is now on March 13 at 4 PM"
+        ],
+        "expect_effect": "changed"
+      }
+    ],
+    "expect_appointments": 1
   }
 ]

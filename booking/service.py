@@ -38,8 +38,11 @@ _REFUSAL_TEXT: dict[str, str] = {
 }
 
 
-def refusal(code: str, alternatives: list[str] | None = None) -> Refused:
+def refusal(code: str, alternatives: list[str] | None = None, *, on_change: bool = False) -> Refused:
+    """A typed refusal. On a change, the sentence ends with "Nothing was changed." so the model knows the old booking stands."""
     text = _REFUSAL_TEXT[code]
+    if on_change:
+        text = text.replace("Nothing was booked.", "Nothing was changed.")
     alts = alternatives or []
     if alts:
         spoken = ", ".join(spoken_time(t) for t in alts[:3])
@@ -122,19 +125,19 @@ class BookingService:
 
         current = self.find(appointment_id)
         if current is None or current.id in self._cancelled:
-            return refusal("not_found")
+            return refusal("not_found", on_change=True)
         if current.phone != phone:
-            return refusal("wrong_caller")
+            return refusal("wrong_caller", on_change=True)
         when = _parse(date, time)
         if when is None:
-            return refusal("invalid_date")
+            return refusal("invalid_date", on_change=True)
         code = self.policy.check_slot(self.clock(), when, current.party_size, has_card=True)
         if code is not None:
-            return refusal(code, self.availability(date))
+            return refusal(code, self.availability(date), on_change=True)
         # The caller's own slot does not count against capacity when moving within the same slot.
         taken = self._booked_count(date, time) - (1 if (current.date, current.time) == (date, time) else 0)
         if taken >= self.capacity:
-            return refusal("slot_unavailable", self.availability(date))
+            return refusal("slot_unavailable", self.availability(date), on_change=True)
 
         updated = Appointment(**{**current.__dict__, "date": date, "time": time, "request_id": request_id})
         self._appointments[updated.id] = updated
