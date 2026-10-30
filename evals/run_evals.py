@@ -11,13 +11,16 @@ eval that belongs with real transcripts; this suite makes sure that once it
 does, the caller hears the truth and the backend holds exactly one booking.
 
     python -m evals.run_evals
+    python -m evals.run_evals --only "lost answer" -v
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,11 +60,24 @@ def build(scenario: dict[str, Any]) -> tuple[CallState, Any, dict[str, str]]:
     return state, inner, codes
 
 
+@dataclass
+class ScenarioResult:
+    """What one replay produced: the failures, and the evidence to debug them."""
+
+    failures: list[str] = field(default_factory=list)
+    said: list[str] = field(default_factory=list)
+    backend_log: list[str] = field(default_factory=list)
+
+
 async def run_scenario(scenario: dict[str, Any]) -> list[str]:
-    failures: list[str] = []
+    return (await replay(scenario)).failures
+
+
+async def replay(scenario: dict[str, Any]) -> ScenarioResult:
+    result = ScenarioResult()
+    failures, said = result.failures, result.said
     state, inner, codes = build(scenario)
     context = SimpleNamespace(userdata=state)
-    said: list[str] = []
 
     for i, step in enumerate(scenario["steps"]):
         args = {k: codes.get(v, v) if isinstance(v, str) else v for k, v in step["args"].items()}
@@ -92,24 +108,56 @@ async def run_scenario(scenario: dict[str, Any]) -> list[str]:
         opened = len(state.handoffs.open_items())
         if opened != scenario["expect_handoffs"]:
             failures.append(f"expected {scenario['expect_handoffs']} handoffs, found {opened}")
+    # Only a FlakyService keeps a log; the plain backend has nothing to show.
+    result.backend_log = list(getattr(state.backend, "log", []))
     if "expect_backend_log" in scenario:
-        log = getattr(state.backend, "log", [])
         for needle in scenario["expect_backend_log"]:
-            if not any(needle in line for line in log):
-                failures.append(f"expected backend log entry containing {needle!r}, log was {log}")
-    return failures
+            if not any(needle in line for line in result.backend_log):
+                failures.append(f"expected backend log entry containing {needle!r}, log was {result.backend_log}")
+    return result
 
 
-async def main() -> int:
-    scenarios = json.loads((Path(__file__).parent / "scenarios.json").read_text())
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="python -m evals.run_evals", description="Replay the scripted scenarios.")
+    parser.add_argument(
+        "--only",
+        action="append",
+        metavar="TEXT",
+        help="run only scenarios whose name contains TEXT (case-insensitive); repeat to run several",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="for a failing scenario, print what the caller heard at each step and the backend log",
+    )
+    return parser.parse_args(argv)
+
+
+async def main(argv: list[str] | None = None, scenarios: list[dict[str, Any]] | None = None) -> int:
+    args = parse_args(argv)
+    if scenarios is None:
+        scenarios = json.loads((Path(__file__).parent / "scenarios.json").read_text())
+    if args.only:
+        wanted = [w.lower() for w in args.only]
+        scenarios = [s for s in scenarios if any(w in s["name"].lower() for w in wanted)]
+        if not scenarios:
+            print(f"no scenario name contains {' or '.join(map(repr, args.only))}")
+            return 2
+
     total_failures = 0
     for scenario in scenarios:
-        failures = await run_scenario(scenario)
-        status = "PASS" if not failures else "FAIL"
+        result = await replay(scenario)
+        status = "PASS" if not result.failures else "FAIL"
         print(f"[{status}] {scenario['name']}")
-        for f in failures:
+        for f in result.failures:
             print(f"        {f}")
-        total_failures += len(failures)
+        if args.verbose and result.failures:
+            for i, text in enumerate(result.said):
+                print(f"        heard {i}: {text}")
+            for line in result.backend_log or ["(no backend log: this scenario has no flaky backend)"]:
+                print(f"        backend: {line}")
+        total_failures += len(result.failures)
     print(f"\n{len(scenarios)} scenarios, {total_failures} failures")
     return 1 if total_failures else 0
 
