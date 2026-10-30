@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/maydan90/voice-booking-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/maydan90/voice-booking-agent/actions/workflows/ci.yml)
 
-Status: working demo. Every push runs 129 tests and 10 replayed scenarios with no API keys; the voice pipeline itself needs provider keys and is exercised by hand.
+Status: working demo. Every push runs 133 tests and 10 replayed scenarios with no API keys; the voice pipeline itself needs provider keys and is exercised by hand.
 
 A small voice agent on [LiveKit Agents](https://github.com/livekit/agents) that books, moves and cancels appointments over the phone. It exists to show four things I think every production voice agent needs, and that are easy to get wrong:
 
@@ -17,8 +17,9 @@ The evals replay scripted tool-call sequences through the real tools, against a 
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                    # 129 tests, no keys needed
+pytest -q                    # 133 tests, no keys needed
 python -m evals.run_evals    # 10 scripted scenarios, no keys needed
+python -m evals.run_evals --only "lost answer" -v   # a subset; on failure, what the caller heard and the backend log
 ```
 
 To talk to it:
